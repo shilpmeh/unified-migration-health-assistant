@@ -8,7 +8,42 @@ import re
 st.set_page_config(page_title="HCLS Migration Health Assistant", page_icon="🏥", layout="wide")
 st.title("🏥 HCLS Migration Health Assistant")
 
-def format_tabular_response(text):
+def process_query(prompt):
+    """Process a query and add to chat"""
+    # Add user message
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    
+    # Route and process query
+    route = route_query(prompt)
+    
+    if route == 'qbusiness':
+        result = query_qbusiness(prompt)
+        response_content = f"**{result['source']}:**\n\n{result['answer']}"
+        st.session_state.messages.append({
+            "role": "assistant", 
+            "content": response_content,
+            "sources": result['sources']
+        })
+        
+    elif route == 'bedrock':
+        result = query_bedrock_kb(prompt)
+        response_content = f"**{result['source']}:**\n\n{result['answer']}"
+        st.session_state.messages.append({
+            "role": "assistant", 
+            "content": response_content,
+            "sources": result['sources']
+        })
+        
+    else:  # both
+        qb_result = query_qbusiness(prompt)
+        kb_result = query_bedrock_kb(prompt)
+        
+        combined_answer = f"**Q Business Analysis:**\n{qb_result['answer']}\n\n**Knowledge Base Insights:**\n{kb_result['answer']}"
+        st.session_state.messages.append({
+            "role": "assistant", 
+            "content": combined_answer,
+            "sources": qb_result['sources'] + kb_result['sources']
+        })
     """Convert text with tabular data to DataFrame if possible"""
     # Look for pipe-separated tables
     lines = text.split('\n')
@@ -88,17 +123,11 @@ def route_query(query):
 def query_qbusiness(query):
     """Query Q Business application"""
     try:
-        # Prepare chat sync parameters
-        params = {
-            'applicationId': QBUSINESS_APP_ID,
-            'userMessage': query
-        }
-        
-        # Only add conversationId if it exists
-        if 'qbusiness_conversation_id' in st.session_state and st.session_state.qbusiness_conversation_id:
-            params['conversationId'] = st.session_state.qbusiness_conversation_id
-        
-        response = clients['qbusiness'].chat_sync(**params)
+        response = clients['qbusiness'].chat_sync(
+            applicationId=QBUSINESS_APP_ID,
+            userMessage=query,
+            conversationId=st.session_state.get('qbusiness_conversation_id')
+        )
         
         # Store conversation ID for context
         if 'conversationId' in response:
@@ -236,5 +265,5 @@ with st.sidebar:
     
     for i, query in enumerate(sample_queries):
         if st.button(query, key=f"sample_{i}"):
-            st.session_state.messages.append({"role": "user", "content": query})
+            process_query(query)
             st.rerun()
