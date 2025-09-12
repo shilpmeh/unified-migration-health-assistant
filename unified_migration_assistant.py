@@ -89,11 +89,17 @@ def route_query(query):
 def query_qbusiness(query):
     """Query Q Business application"""
     try:
-        response = clients['qbusiness'].chat_sync(
-            applicationId=QBUSINESS_APP_ID,
-            userMessage=query,
-            conversationId=st.session_state.get('qbusiness_conversation_id')
-        )
+        # Prepare chat sync parameters
+        params = {
+            'applicationId': QBUSINESS_APP_ID,
+            'userMessage': query
+        }
+        
+        # Only add conversationId if it exists
+        if 'qbusiness_conversation_id' in st.session_state and st.session_state.qbusiness_conversation_id:
+            params['conversationId'] = st.session_state.qbusiness_conversation_id
+        
+        response = clients['qbusiness'].chat_sync(**params)
         
         # Store conversation ID for context
         if 'conversationId' in response:
