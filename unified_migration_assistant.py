@@ -51,9 +51,42 @@ def query_bedrock_kb(query):
             'sources': []
         }
 
-# Chat interface
+def process_query(prompt):
+    """Process a query and add to chat"""
+    # Add user message
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    
+    # Process query
+    result = query_bedrock_kb(prompt)
+    st.session_state.messages.append({
+        "role": "assistant", 
+        "content": result['answer'],
+        "sources": result['sources']
+    })
+
+# Initialize session state
 if "messages" not in st.session_state:
     st.session_state.messages = []
+
+# Sidebar with sample queries
+with st.sidebar:
+    st.header("💡 Sample Queries")
+    
+    sample_queries = [
+        "Show migration status for ModivCare",
+        "What is the current YTD revenue realization vs target?",
+        "List all partner-attached migrations and their performance",
+        "Which migrations have high spend variance?",
+        "Calculate revenue attainment for Q3",
+        "Identify at-risk migrations",
+        "Partner performance analysis",
+        "Show migration health status by territory"
+    ]
+    
+    for i, query in enumerate(sample_queries):
+        if st.button(query, key=f"sample_{i}"):
+            process_query(query)
+            st.rerun()
 
 # Display chat history
 for message in st.session_state.messages:
@@ -69,38 +102,6 @@ for message in st.session_state.messages:
 
 # Chat input
 if prompt := st.chat_input("Ask about migration health data..."):
-    # Add user message
-    st.session_state.messages.append({"role": "user", "content": prompt})
-    with st.chat_message("user"):
-        st.markdown(prompt)
-    
-    # Process query
-    with st.chat_message("assistant"):
-        with st.spinner("Analyzing migration data..."):
-            result = query_bedrock_kb(prompt)
-            st.markdown(result['answer'])
-            st.session_state.messages.append({
-                "role": "assistant", 
-                "content": result['answer'],
-                "sources": result['sources']
-            })
-
-# Sidebar with sample queries only
-with st.sidebar:
-    st.header("💡 Sample Queries")
-    
-    sample_queries = [
-        "Show migration status for ModivCare",
-        "What is the current YTD revenue realization vs target?",
-        "List all partner-attached migrations and their performance",
-        "Which migrations have high spend variance?",
-        "Calculate revenue attainment for Q3",
-        "Identify at-risk migrations",
-        "Partner performance analysis",
-        "Show migration health status by territory"
-    ]
-    
-    for query in sample_queries:
-        if st.button(query, key=f"sample_{hash(query)}"):
-            st.session_state.messages.append({"role": "user", "content": query})
-            st.rerun()
+    with st.spinner("Analyzing migration data..."):
+        process_query(prompt)
+        st.rerun()
