@@ -8,6 +8,40 @@ import re
 st.set_page_config(page_title="HCLS Migration Health Assistant", page_icon="🏥", layout="wide")
 st.title("🏥 HCLS Migration Health Assistant")
 
+def format_tabular_response(text):
+    """Convert text with tabular data to DataFrame if possible"""
+    # Look for pipe-separated tables
+    lines = text.split('\n')
+    table_lines = []
+    in_table = False
+    
+    for line in lines:
+        if '|' in line and len(line.split('|')) > 2:
+            table_lines.append(line)
+            in_table = True
+        elif in_table and line.strip() == '':
+            break
+        elif in_table:
+            break
+    
+    if len(table_lines) >= 2:  # Header + at least one data row
+        try:
+            # Parse the table
+            rows = []
+            for line in table_lines:
+                if '---' not in line:  # Skip separator lines
+                    cols = [col.strip() for col in line.split('|') if col.strip()]
+                    if cols:
+                        rows.append(cols)
+            
+            if len(rows) >= 2:
+                df = pd.DataFrame(rows[1:], columns=rows[0])
+                return df, text.replace('\n'.join(table_lines), '')
+        except:
+            pass
+    
+    return None, text
+
 def process_query(prompt):
     """Process a query and add to chat"""
     # Add user message
