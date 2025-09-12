@@ -1,3 +1,4 @@
 streamlit==1.49.1
 boto3==1.39.4
 botocore==1.39.4
+pandas
