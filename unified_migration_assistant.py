@@ -216,58 +216,21 @@ if prompt := st.chat_input("Ask about migration health data..."):
                     "sources": qb_result['sources'] + kb_result['sources']
                 })
 
-# Sidebar with routing info and sample queries
+# Sidebar with sample queries
 with st.sidebar:
-    st.header("🎯 Query Routing")
-    st.info("""
-    **Q Business** - For structured data:
-    • Territory analysis
-    • Revenue metrics
-    • Partner performance
-    • Migration status
-    
-    **Bedrock KB** - For insights:
-    • Explanations
-    • Best practices
-    • Recommendations
-    • Overviews
-    
-    **Both** - For comprehensive analysis
-    """)
-    
     st.header("💡 Sample Queries")
     
-    st.subheader("Q Business Queries")
-    qb_queries = [
-        "Show migration status by customer territory code",
+    sample_queries = [
+        "Show migration status for ModivCare",
         "What is the current YTD revenue realization vs target?",
-        "List all partner-attached migrations and their performance"
+        "List all partner-attached migrations and their performance",
+        "Which migrations have high spend variance?",
+        "Calculate revenue attainment for Q3",
+        "Identify at-risk migrations",
+        "Partner performance analysis"
     ]
     
-    for query in qb_queries:
-        if st.button(query, key=f"qb_{query}"):
-            st.session_state.messages.append({"role": "user", "content": query})
-            st.rerun()
-    
-    st.subheader("Bedrock KB Queries")
-    kb_queries = [
-        "Explain migration health best practices",
-        "What are common migration challenges?",
-        "Describe revenue optimization strategies"
-    ]
-    
-    for query in kb_queries:
-        if st.button(query, key=f"kb_{query}"):
-            st.session_state.messages.append({"role": "user", "content": query})
-            st.rerun()
-    
-    st.subheader("Combined Analysis")
-    combined_queries = [
-        "Analyze overall migration performance and suggest improvements",
-        "What insights can you provide about our migration portfolio?"
-    ]
-    
-    for query in combined_queries:
-        if st.button(query, key=f"combined_{query}"):
+    for i, query in enumerate(sample_queries):
+        if st.button(query, key=f"sample_{i}"):
             st.session_state.messages.append({"role": "user", "content": query})
             st.rerun()
