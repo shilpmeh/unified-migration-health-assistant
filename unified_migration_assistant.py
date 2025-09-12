@@ -85,7 +85,6 @@ def route_query(query):
     else:
         return 'both'  # Use both for comprehensive analysis
 
-@st.cache_data(ttl=600)  # Cache for 10 minutes
 def query_qbusiness(query):
     """Query Q Business application"""
     try:
@@ -117,7 +116,6 @@ def query_qbusiness(query):
             'sources': []
         }
 
-@st.cache_data(ttl=600)  # Cache for 10 minutes
 def query_bedrock_kb(query):
     """Query Bedrock Knowledge Base"""
     try:
