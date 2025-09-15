@@ -2,6 +2,7 @@ import streamlit as st
 import boto3
 import json
 from datetime import datetime
+import hashlib
 
 # Configure page
 st.set_page_config(
@@ -9,6 +10,35 @@ st.set_page_config(
     page_icon="🏥",
     layout="wide"
 )
+
+# Authentication
+def check_password():
+    """Returns `True` if the user had the correct password."""
+    # Hardcoded for testing - password is "test123"
+    TEST_PASSWORD_HASH = "ecd71870d1963316a97e3ac3408c9835ad8cf0f3c1bc703527c30265534f75ae"
+    
+    def password_entered():
+        """Checks whether a password entered by the user is correct."""
+        entered_hash = hashlib.sha256(st.session_state["password"].encode()).hexdigest()
+        
+        if entered_hash == TEST_PASSWORD_HASH:
+            st.session_state["password_correct"] = True
+            del st.session_state["password"]  # Don't store the password
+        else:
+            st.session_state["password_correct"] = False
+
+    # Return True if password is validated
+    if st.session_state.get("password_correct", False):
+        return True
+
+    # Show input for password
+    st.text_input("Password", type="password", on_change=password_entered, key="password")
+    if "password_correct" in st.session_state and not st.session_state["password_correct"]:
+        st.error("😕 Password incorrect")
+    return False
+
+if not check_password():
+    st.stop()
 
 # Initialize session state
 if "messages" not in st.session_state:
@@ -28,8 +58,25 @@ def get_bedrock_client():
     except:
         return boto3.client('bedrock-agent-runtime', region_name='us-east-1')
 
+def validate_input(query):
+    """Validate user input for security"""
+    if len(query) > 1000:
+        return False, "Query too long (max 1000 characters)"
+    
+    # Block potential injection attempts
+    blocked_patterns = ['<script', 'javascript:', 'eval(', 'exec(']
+    if any(pattern in query.lower() for pattern in blocked_patterns):
+        return False, "Invalid input detected"
+    
+    return True, ""
+
 def query_knowledge_base(query, kb_id):
-    """Query Bedrock knowledge base"""
+    """Query Bedrock knowledge base with security checks"""
+    # Validate input
+    is_valid, error_msg = validate_input(query)
+    if not is_valid:
+        return f"Security Error: {error_msg}"
+    
     try:
         client = get_bedrock_client()
         response = client.retrieve_and_generate(
@@ -44,7 +91,8 @@ def query_knowledge_base(query, kb_id):
         )
         return response['output']['text']
     except Exception as e:
-        return f"Error querying knowledge base: {str(e)}"
+        # Don't expose internal errors
+        return "An error occurred while processing your request. Please try again."
 
 def format_tabular_response(response_text):
     """Format response as table if it contains tabular data"""
