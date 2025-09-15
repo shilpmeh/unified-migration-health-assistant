@@ -71,9 +71,18 @@ def query_knowledge_base(user_query, kb_id):
         return f"Security Error: {error_msg}"
     
     # Make the query more specific to retrieve actual data
-    enhanced_query = f"""Query the knowledge base files for: {user_query}
+    enhanced_query = f"""COMPREHENSIVE DATA RETRIEVAL REQUEST:
 
-Retrieve actual data from Excel files, JSON files, and documents. Provide specific data points, numbers, and details from the files.
+Query: {user_query}
+
+CRITICAL INSTRUCTIONS:
+1. Search ALL available data sources and files
+2. Retrieve COMPLETE datasets, not just summaries  
+3. Include ALL relevant rows and columns of data
+4. Provide specific numbers, names, and details from the actual files
+5. Show real data from Detailed_Report, YTD_Revenue_Progress, Pipeline_Detail, and ARR_Win_Deal sheets
+6. Include actual customer names, engagement IDs, revenue figures, health statuses
+7. Format data in tables when showing lists or comparisons
 
 {SYSTEM_PROMPT}"""
     
@@ -85,7 +94,13 @@ Retrieve actual data from Excel files, JSON files, and documents. Provide specif
                 'type': 'KNOWLEDGE_BASE',
                 'knowledgeBaseConfiguration': {
                     'knowledgeBaseId': kb_id,
-                    'modelArn': 'arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-3-sonnet-20240229-v1:0'
+                    'modelArn': 'arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-3-sonnet-20240229-v1:0',
+                    'retrievalConfiguration': {
+                        'vectorSearchConfiguration': {
+                            'numberOfResults': 20,  # Increase from default (usually 5)
+                            'overrideSearchType': 'HYBRID'  # Use both semantic and keyword search
+                        }
+                    }
                 }
             }
         )
