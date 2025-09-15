@@ -70,17 +70,20 @@ def validate_input(query):
     
     return True, ""
 
-def query_knowledge_base(query, kb_id):
+def query_knowledge_base(user_query, kb_id):
     """Query Bedrock knowledge base with security checks"""
-    # Validate input
-    is_valid, error_msg = validate_input(query)
+    # Validate only the user input, not the system prompt
+    is_valid, error_msg = validate_input(user_query)
     if not is_valid:
         return f"Security Error: {error_msg}"
+    
+    # Add system prompt to user query for Bedrock
+    enhanced_query = f"{SYSTEM_PROMPT}\n\nUser Query: {user_query}"
     
     try:
         client = get_bedrock_client()
         response = client.retrieve_and_generate(
-            input={'text': query},
+            input={'text': enhanced_query},
             retrieveAndGenerateConfiguration={
                 'type': 'KNOWLEDGE_BASE',
                 'knowledgeBaseConfiguration': {
@@ -143,7 +146,6 @@ st.markdown("*AWS HCLS Migration & Modernization Analysis*")
 
 # Knowledge Base ID - hardcoded
 kb_id = "HBNUJXVNB8"
-st.info(f"Connected to Knowledge Base: {kb_id}")
 
 # Sample query buttons
 st.markdown("### Quick Actions")
@@ -194,12 +196,10 @@ if prompt := st.chat_input("Ask about migration status, revenue, partners, or te
 if st.session_state.messages and st.session_state.messages[-1]["role"] == "user":
     user_query = st.session_state.messages[-1]["content"]
     
-    # Enhance query with system context
-    enhanced_query = f"{SYSTEM_PROMPT}\n\nUser Query: {user_query}"
-    
     with st.chat_message("assistant"):
         with st.spinner("Analyzing migration data..."):
-            response = query_knowledge_base(enhanced_query, kb_id)
+            # Pass only user query, system prompt will be added inside the function
+            response = query_knowledge_base(user_query, kb_id)
             
             # Check if response should be tabular
             if any(word in user_query.lower() for word in ['show', 'list', 'compare']):
