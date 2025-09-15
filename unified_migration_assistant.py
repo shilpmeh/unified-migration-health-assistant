@@ -47,21 +47,14 @@ if "messages" not in st.session_state:
 # Initialize Bedrock client
 @st.cache_resource
 def get_bedrock_client():
-    # Try to use Streamlit secrets first, fallback to local AWS config
-    try:
-        return boto3.client(
-            'bedrock-agent-runtime',
-            region_name='us-east-1',
-            aws_access_key_id=st.secrets["aws"]["AWS_ACCESS_KEY_ID"],
-            aws_secret_access_key=st.secrets["aws"]["AWS_SECRET_ACCESS_KEY"]
-        )
-    except:
-        return boto3.client('bedrock-agent-runtime', region_name='us-east-1')
+    # Use default AWS credentials (from ~/.aws/credentials or IAM role)
+    return boto3.client('bedrock-agent-runtime', region_name='us-east-1')
 
 def validate_input(query):
     """Validate user input for security"""
-    if len(query) > 1000:
-        return False, "Query too long (max 1000 characters)"
+    # Only validate user input length (not system prompt)
+    if len(query) > 500:  # Reasonable limit for user queries
+        return False, "Query too long (max 500 characters)"
     
     # Block potential injection attempts
     blocked_patterns = ['<script', 'javascript:', 'eval(', 'exec(']
@@ -94,8 +87,9 @@ def query_knowledge_base(user_query, kb_id):
         )
         return response['output']['text']
     except Exception as e:
-        # Don't expose internal errors
-        return "An error occurred while processing your request. Please try again."
+        # Show actual error for debugging
+        st.error(f"Debug Error: {str(e)}")
+        return f"Error details: {str(e)}"
 
 def format_tabular_response(response_text):
     """Format response as table if it contains tabular data"""
