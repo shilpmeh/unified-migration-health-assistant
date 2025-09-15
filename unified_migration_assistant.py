@@ -1,303 +1,194 @@
 import streamlit as st
 import boto3
 import json
-import pandas as pd
-import re
+from datetime import datetime
 
 # Configure page
-st.set_page_config(page_title="HCLS Migration Health Assistant", page_icon="🏥", layout="wide")
-st.title("🏥 HCLS Migration Health Assistant")
+st.set_page_config(
+    page_title="Migration Health AI Assistant",
+    page_icon="🏥",
+    layout="wide"
+)
 
-def format_tabular_response(text):
-    """Convert text with tabular data to DataFrame if possible"""
-    # Look for pipe-separated tables
-    lines = text.split('\n')
-    table_lines = []
-    in_table = False
-    
-    for line in lines:
-        if '|' in line and len(line.split('|')) > 2:
-            table_lines.append(line)
-            in_table = True
-        elif in_table and line.strip() == '':
-            break
-        elif in_table:
-            break
-    
-    if len(table_lines) >= 2:  # Header + at least one data row
-        try:
-            # Parse the table
-            rows = []
-            for line in table_lines:
-                if '---' not in line:  # Skip separator lines
-                    cols = [col.strip() for col in line.split('|') if col.strip()]
-                    if cols:
-                        rows.append(cols)
-            
-            if len(rows) >= 2:
-                df = pd.DataFrame(rows[1:], columns=rows[0])
-                return df, text.replace('\n'.join(table_lines), '')
-        except:
-            pass
-    
-    return None, text
+# Initialize session state
+if "messages" not in st.session_state:
+    st.session_state.messages = []
 
-def process_query(prompt):
-    """Process a query and add to chat"""
-    # Add user message
-    st.session_state.messages.append({"role": "user", "content": prompt})
-    
-    # Route and process query
-    route = route_query(prompt)
-    
-    if route == 'qbusiness':
-        result = query_qbusiness(prompt)
-        response_content = f"**{result['source']}:**\n\n{result['answer']}"
-        st.session_state.messages.append({
-            "role": "assistant", 
-            "content": response_content,
-            "sources": result['sources']
-        })
-        
-    elif route == 'bedrock':
-        result = query_bedrock_kb(prompt)
-        response_content = f"**{result['source']}:**\n\n{result['answer']}"
-        st.session_state.messages.append({
-            "role": "assistant", 
-            "content": response_content,
-            "sources": result['sources']
-        })
-        
-    else:  # both
-        qb_result = query_qbusiness(prompt)
-        kb_result = query_bedrock_kb(prompt)
-        
-        combined_answer = f"**Q Business Analysis:**\n{qb_result['answer']}\n\n**Knowledge Base Insights:**\n{kb_result['answer']}"
-        st.session_state.messages.append({
-            "role": "assistant", 
-            "content": combined_answer,
-            "sources": qb_result['sources'] + kb_result['sources']
-        })
-    """Convert text with tabular data to DataFrame if possible"""
-    # Look for pipe-separated tables
-    lines = text.split('\n')
-    table_lines = []
-    in_table = False
-    
-    for line in lines:
-        if '|' in line and len(line.split('|')) > 2:
-            table_lines.append(line)
-            in_table = True
-        elif in_table and line.strip() == '':
-            break
-        elif in_table:
-            break
-    
-    if len(table_lines) >= 2:  # Header + at least one data row
-        try:
-            # Parse the table
-            rows = []
-            for line in table_lines:
-                if '---' not in line:  # Skip separator lines
-                    cols = [col.strip() for col in line.split('|') if col.strip()]
-                    if cols:
-                        rows.append(cols)
-            
-            if len(rows) >= 2:
-                df = pd.DataFrame(rows[1:], columns=rows[0])
-                return df, text.replace('\n'.join(table_lines), '')
-        except:
-            pass
-    
-    return None, text
-
-# Initialize AWS clients
+# Initialize Bedrock client
 @st.cache_resource
-def get_aws_clients():
-    return {
-        'bedrock': boto3.client('bedrock-agent-runtime', region_name='us-east-1'),
-        'qbusiness': boto3.client('qbusiness', region_name='us-east-1')
-    }
-
-clients = get_aws_clients()
-
-# Configuration
-KB_ID = "HBNUJXVNB8"  # Bedrock Knowledge Base
-QBUSINESS_APP_ID = "71fee8c3-d898-4d1b-b70a-c624128d7028"  # Q Business App
-MODEL_ARN = "arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-3-5-sonnet-20240620-v1:0"
-
-# Query routing logic
-def route_query(query):
-    """Route queries to appropriate system based on content"""
-    query_lower = query.lower()
-    
-    # Q Business keywords (structured data analysis)
-    qbusiness_keywords = [
-        'territory', 'sfdc customer', 'revenue realization', 'partner performance',
-        'migration status', 'detailed report', 'ytd revenue', 'spend variance',
-        'customer territory code', 'engagement id', 'migration delivered by'
-    ]
-    
-    # Bedrock KB keywords (semantic search)
-    bedrock_keywords = [
-        'explain', 'how to', 'what is', 'describe', 'summary', 'overview',
-        'best practices', 'recommendations', 'challenges', 'insights'
-    ]
-    
-    qbusiness_score = sum(1 for keyword in qbusiness_keywords if keyword in query_lower)
-    bedrock_score = sum(1 for keyword in bedrock_keywords if keyword in query_lower)
-    
-    if qbusiness_score > bedrock_score:
-        return 'qbusiness'
-    elif bedrock_score > qbusiness_score:
-        return 'bedrock'
-    else:
-        return 'both'  # Use both for comprehensive analysis
-
-def query_qbusiness(query):
-    """Query Q Business application"""
+def get_bedrock_client():
+    # Try to use Streamlit secrets first, fallback to local AWS config
     try:
-        response = clients['qbusiness'].chat_sync(
-            applicationId=QBUSINESS_APP_ID,
-            userMessage=query,
-            conversationId=st.session_state.get('qbusiness_conversation_id')
+        return boto3.client(
+            'bedrock-agent-runtime',
+            region_name='us-east-1',
+            aws_access_key_id=st.secrets["aws"]["AWS_ACCESS_KEY_ID"],
+            aws_secret_access_key=st.secrets["aws"]["AWS_SECRET_ACCESS_KEY"]
         )
-        
-        # Store conversation ID for context
-        if 'conversationId' in response:
-            st.session_state.qbusiness_conversation_id = response['conversationId']
-        
-        return {
-            'source': 'Q Business',
-            'answer': response.get('systemMessage', 'No response'),
-            'sources': response.get('sourceAttributions', [])
-        }
-    except Exception as e:
-        return {
-            'source': 'Q Business',
-            'answer': f"Error: {str(e)}",
-            'sources': []
-        }
+    except:
+        return boto3.client('bedrock-agent-runtime', region_name='us-east-1')
 
-def query_bedrock_kb(query):
-    """Query Bedrock Knowledge Base"""
+def query_knowledge_base(query, kb_id):
+    """Query Bedrock knowledge base"""
     try:
-        response = clients['bedrock'].retrieve_and_generate(
+        client = get_bedrock_client()
+        response = client.retrieve_and_generate(
             input={'text': query},
             retrieveAndGenerateConfiguration={
                 'type': 'KNOWLEDGE_BASE',
                 'knowledgeBaseConfiguration': {
-                    'knowledgeBaseId': KB_ID,
-                    'modelArn': MODEL_ARN,
-                    'retrievalConfiguration': {
-                        'vectorSearchConfiguration': {
-                            'numberOfResults': 10
-                        }
-                    }
+                    'knowledgeBaseId': kb_id,
+                    'modelArn': 'arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-3-sonnet-20240229-v1:0'
                 }
             }
         )
-        
-        return {
-            'source': 'Bedrock Knowledge Base',
-            'answer': response['output']['text'],
-            'sources': response.get('citations', [])
-        }
+        return response['output']['text']
     except Exception as e:
-        return {
-            'source': 'Bedrock Knowledge Base',
-            'answer': f"Error: {str(e)}",
-            'sources': []
-        }
+        return f"Error querying knowledge base: {str(e)}"
+
+def format_tabular_response(response_text):
+    """Format response as table if it contains tabular data"""
+    lines = response_text.split('\n')
+    table_data = []
+    headers = []
+    
+    for line in lines:
+        if '|' in line and line.strip():
+            cells = [cell.strip() for cell in line.split('|') if cell.strip()]
+            if cells:
+                if not headers:
+                    headers = cells
+                else:
+                    table_data.append(cells)
+    
+    if headers and table_data:
+        try:
+            import pandas as pd
+            df = pd.DataFrame(table_data, columns=headers)
+            return df
+        except:
+            pass
+    
+    return None
+
+# System prompt for the assistant
+SYSTEM_PROMPT = """You are the Migration Health AI Assistant for AWS HCLS migration and modernization engagements. 
+
+Your scope includes:
+- HCLS customer territory code wise analysis
+- SFDC customer name wise migration status analysis and reporting
+- Migration status insights including deal type, migration health, revenue realization, partner engagements
+- Excel data analysis from YTD_Revenue_Progress and Detailed_Report sheets
+
+Data Sources:
+- Detailed_Report: Customer Territory Code, Migration Delivered By, Deal Type, SFDC Customer Name, Engagement ID, Migration Health, Revenue data
+- YTD_Revenue_Progress: Partner Engagement, SFDC Customer Name, Engagement ID, Migration Status, Migration ARR
+- Pipeline_Detail and ARR_Win_Deal: ONLY for migration pipeline queries
+
+For queries starting with "Show" or "List", provide responses in clear tabular format.
+Do not provide hypothetical examples - use only actual data from the knowledge base.
+Focus on migration performance analysis, challenge identification, and improvement suggestions."""
+
+# Main UI
+st.title("🏥 Migration Health AI Assistant")
+st.markdown("*AWS HCLS Migration & Modernization Analysis*")
+
+# Knowledge Base ID - hardcoded
+kb_id = "HBNUJXVNB8"
+st.info(f"Connected to Knowledge Base: {kb_id}")
+
+# Sample query buttons
+st.markdown("### Quick Actions")
+col1, col2, col3 = st.columns(3)
+
+with col1:
+    if st.button("📊 YTD Revenue vs Target"):
+        query = "What is the current YTD revenue realization vs target?"
+        st.session_state.messages.append({"role": "user", "content": query})
+        
+    if st.button("🏢 Territory Performance"):
+        query = "Show migration distribution by territory"
+        st.session_state.messages.append({"role": "user", "content": query})
+
+with col2:
+    if st.button("🤝 Partner Analysis"):
+        query = "List all partner-attached migrations and their performance"
+        st.session_state.messages.append({"role": "user", "content": query})
+        
+    if st.button("⚠️ High-Risk Migrations"):
+        query = "List high-risk migrations"
+        st.session_state.messages.append({"role": "user", "content": query})
+
+with col3:
+    if st.button("📈 Pipeline Opportunities"):
+        query = "Show current pipeline opportunities and their status"
+        st.session_state.messages.append({"role": "user", "content": query})
+        
+    if st.button("🎯 Migration Completion Rates"):
+        query = "Show migration completion rates"
+        st.session_state.messages.append({"role": "user", "content": query})
 
 # Chat interface
-if "messages" not in st.session_state:
-    st.session_state.messages = []
+st.markdown("### Chat Interface")
 
-# Display chat history
+# Display chat messages
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
-        if message["role"] == "assistant":
-            # Try to format as table
-            df, remaining_text = format_tabular_response(message["content"])
-            if df is not None:
-                st.dataframe(df, use_container_width=True)
-                if remaining_text.strip():
-                    st.markdown(remaining_text)
-            else:
-                st.markdown(message["content"])
-        else:
-            st.markdown(message["content"])
-        if "sources" in message and message["sources"]:
-            with st.expander("📚 Sources"):
-                for i, source in enumerate(message["sources"][:3]):
-                    st.write(f"**Source {i+1}:** {source}")
+        st.markdown(message["content"])
 
 # Chat input
-if prompt := st.chat_input("Ask about migration health data..."):
-    # Add user message
+if prompt := st.chat_input("Ask about migration status, revenue, partners, or territories..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
+
+# Process the latest message
+if st.session_state.messages and st.session_state.messages[-1]["role"] == "user":
+    user_query = st.session_state.messages[-1]["content"]
     
-    # Route and process query
+    # Enhance query with system context
+    enhanced_query = f"{SYSTEM_PROMPT}\n\nUser Query: {user_query}"
+    
     with st.chat_message("assistant"):
         with st.spinner("Analyzing migration data..."):
-            route = route_query(prompt)
+            response = query_knowledge_base(enhanced_query, kb_id)
             
-            if route == 'qbusiness':
-                result = query_qbusiness(prompt)
-                st.markdown(f"**{result['source']}:**\n\n{result['answer']}")
-                st.session_state.messages.append({
-                    "role": "assistant", 
-                    "content": f"**{result['source']}:**\n\n{result['answer']}",
-                    "sources": result['sources']
-                })
-                
-            elif route == 'bedrock':
-                result = query_bedrock_kb(prompt)
-                st.markdown(f"**{result['source']}:**\n\n{result['answer']}")
-                st.session_state.messages.append({
-                    "role": "assistant", 
-                    "content": f"**{result['source']}:**\n\n{result['answer']}",
-                    "sources": result['sources']
-                })
-                
-            else:  # both
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    st.subheader("📊 Q Business Analysis")
-                    qb_result = query_qbusiness(prompt)
-                    st.markdown(qb_result['answer'])
-                
-                with col2:
-                    st.subheader("🔍 Knowledge Base Insights")
-                    kb_result = query_bedrock_kb(prompt)
-                    st.markdown(kb_result['answer'])
-                
-                combined_answer = f"**Q Business Analysis:**\n{qb_result['answer']}\n\n**Knowledge Base Insights:**\n{kb_result['answer']}"
-                st.session_state.messages.append({
-                    "role": "assistant", 
-                    "content": combined_answer,
-                    "sources": qb_result['sources'] + kb_result['sources']
-                })
+            # Check if response should be tabular
+            if any(word in user_query.lower() for word in ['show', 'list', 'compare']):
+                df = format_tabular_response(response)
+                if df is not None:
+                    st.dataframe(df, use_container_width=True)
+                    st.markdown("---")
+                    st.markdown("**Detailed Analysis:**")
+            
+            st.markdown(response)
+    
+    st.session_state.messages.append({"role": "assistant", "content": response})
 
 # Sidebar with sample queries
 with st.sidebar:
-    st.header("💡 Sample Queries")
+    st.markdown("### Sample Queries")
     
-    sample_queries = [
-        "Show migration status for ModivCare",
-        "What is the current YTD revenue realization vs target?",
-        "List all partner-attached migrations and their performance",
-        "Which migrations have high spend variance?",
-        "Calculate revenue attainment for Q3",
-        "Identify at-risk migrations",
-        "Partner performance analysis"
-    ]
+    st.markdown("**Account-Specific:**")
+    st.code('Show migration status for [SFDC Customer Name]')
+    st.code('What are the key challenges for [Customer]?')
     
-    for i, query in enumerate(sample_queries):
-        if st.button(query, key=f"sample_{i}"):
-            process_query(query)
-            st.rerun()
+    st.markdown("**Revenue Performance:**")
+    st.code('Which accounts are behind benchmark in revenue?')
+    st.code('Show revenue trend for [account name]')
+    
+    st.markdown("**Partner Analysis:**")
+    st.code('Which partners are leading in migration revenue?')
+    st.code('Show partner-related execution challenges')
+    
+    st.markdown("**Territory Analysis:**")
+    st.code('Which territories need pipeline growth?')
+    st.code('Compare territory performance metrics')
+    
+    st.markdown("**Risk Assessment:**")
+    st.code('Show mitigation plans for at-risk accounts')
+    st.code('Provide risk analysis for [account]')
+
+# Footer
+st.markdown("---")
+st.markdown("*Migration Health AI Assistant - Powered by AWS Bedrock Knowledge Base*")
