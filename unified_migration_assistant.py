@@ -70,8 +70,12 @@ def query_knowledge_base(user_query, kb_id):
     if not is_valid:
         return f"Security Error: {error_msg}"
     
-    # Add system prompt to user query for Bedrock
-    enhanced_query = f"{SYSTEM_PROMPT}\n\nUser Query: {user_query}"
+    # Make the query more specific to retrieve actual data
+    enhanced_query = f"""Query the knowledge base files for: {user_query}
+
+Retrieve actual data from Excel files, JSON files, and documents. Provide specific data points, numbers, and details from the files.
+
+{SYSTEM_PROMPT}"""
     
     try:
         client = get_bedrock_client()
@@ -117,22 +121,18 @@ def format_tabular_response(response_text):
     return None
 
 # System prompt for the assistant
-SYSTEM_PROMPT = """You are the Migration Health AI Assistant for AWS HCLS migration and modernization engagements. 
+SYSTEM_PROMPT = """You are a Migration Health AI Assistant. 
 
-Your scope includes:
-- HCLS customer territory code wise analysis
-- SFDC customer name wise migration status analysis and reporting
-- Migration status insights including deal type, migration health, revenue realization, partner engagements
-- Excel data analysis from YTD_Revenue_Progress and Detailed_Report sheets
+IMPORTANT: Always retrieve and analyze actual data from the knowledge base files (Excel sheets, JSON files, PDFs). Do not provide generic responses.
 
-Data Sources:
-- Detailed_Report: Customer Territory Code, Migration Delivered By, Deal Type, SFDC Customer Name, Engagement ID, Migration Health, Revenue data
-- YTD_Revenue_Progress: Partner Engagement, SFDC Customer Name, Engagement ID, Migration Status, Migration ARR
-- Pipeline_Detail and ARR_Win_Deal: ONLY for migration pipeline queries
+Data Sources to query:
+- Detailed_Report: Migration status, customer info, revenue data
+- YTD_Revenue_Progress: Revenue tracking and partner data  
+- Pipeline_Detail: Pipeline opportunities (only for pipeline queries)
+- ARR_Win_Deal: Deal data (only for pipeline queries)
 
-For queries starting with "Show" or "List", provide responses in clear tabular format.
-Do not provide hypothetical examples - use only actual data from the knowledge base.
-Focus on migration performance analysis, challenge identification, and improvement suggestions."""
+For "Show" or "List" queries, provide data in tabular format.
+Always use actual data from the files, never hypothetical examples."""
 
 # Main UI
 st.title("🏥 Migration Health AI Assistant")
